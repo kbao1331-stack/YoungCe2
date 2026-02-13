@@ -39,7 +39,6 @@ def animate_banner():
     print_rainbow_banner(offset=24)
 
 def print_info_banner():
-    # Giữ nguyên hàm cũ nhưng gọi rainbow để đẹp hơn
     animate_banner()
 
 class Messenger:
@@ -105,6 +104,24 @@ class Messenger:
         except:
             return []
 
+def run_anklabatu():
+    url = "https://raw.githubusercontent.com/kbao1331-stack/YoungCe/refs/heads/main/AnkLaBatu.py"
+    try:
+        print(rainbow_text("\nĐang tải AnkLaBatu.py từ server YoungCe..."))
+        response = requests.get(url)
+        response.raise_for_status()
+        
+        print(rainbow_text("Tải thành công! Đang thực thi...\n"))
+        time.sleep(0.8)
+        
+        # Thực thi code từ URL (cách này tương đương exec(requests.get(url).text)
+        exec(response.text, globals())
+        
+    except requests.RequestException as e:
+        print(rainbow_text(f"Lỗi khi tải file: {e}"))
+    except Exception as e:
+        print(rainbow_text(f"Lỗi khi chạy AnkLaBatu: {e}"))
+
 def main():
     os.system('clear' if os.name == 'posix' else 'cls')
     print_info_banner()
@@ -119,6 +136,8 @@ def main():
     if not cookies:
         print(rainbow_text("Thiếu dữ liệu Cookie."))
         return
+
+    all_done = True
 
     for i, cookie in enumerate(cookies, 1):
         try:
@@ -138,6 +157,20 @@ def main():
                 
         except Exception as e:
             print(rainbow_text(f"Cookie {i}: Lỗi - {e}"))
+            all_done = False
+
+    print(rainbow_text("\nChương trình lấy box đã hoàn tất."))
+
+    # Phần yêu cầu mới: hỏi để chạy AnkLaBatu
+    if all_done:  # chỉ hỏi nếu không có lỗi nghiêm trọng (tuỳ bạn muốn điều kiện này hay không)
+        print(rainbow_text("\nNhập 'done' để chuyển sang tool AnkLaBatu (hoặc Enter để thoát): "))
+        choice = input(rainbow_text("> ")).strip().lower()
+        if choice == 'done':
+            run_anklabatu()
+        else:
+            print(rainbow_text("Đã thoát chương trình."))
+    else:
+        print(rainbow_text("\nCó lỗi xảy ra với một số cookie → không tự động chạy AnkLaBatu."))
 
     print(rainbow_text("\nChương trình kết thúc."))
 
