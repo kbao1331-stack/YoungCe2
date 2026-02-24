@@ -6,9 +6,13 @@ import time
 import re
 import os
 import requests
-from datetime import datetime  # Thêm thư viện để lấy thời gian
+import sys
+from datetime import datetime
 # Chỉ giữ lại module treo_mqtt theo yêu cầu
-from module.treomqtt import * # --- Giao diện Banner & Màu sắc ---
+from module.treomqtt import * # --- Biến toàn cục để điều khiển trạng thái ---
+running_status = True
+current_delay = 1.0
+
 def rainbow_text(text, offset=0):
     colors = [
         (255, 0, 0), (255, 140, 0), (255, 215, 0), (0, 255, 0),
@@ -27,50 +31,59 @@ def print_banner():
     banner = [
         "┌─────────────────────────────────────────────────────┐",
         "│            TOOL TREO MQTT - MULTI COOKIE            │",
-        "│                ADMIN: YOUNGCE                       │",
+        "│        Lệnh: 's' để DỪNG | 'd' để ĐỔI DELAY         │",
         "└─────────────────────────────────────────────────────┘",
     ]
     for i, line in enumerate(banner):
         print(rainbow_text(line, offset=i))
 
+# --- Luồng lắng nghe lệnh điều khiển ---
+def listen_for_commands():
+    global running_status, current_delay
+    while running_status:
+        cmd = input().lower().strip()
+        if cmd == 's':
+            print(rainbow_text("\n[!] Đang dừng tất cả tiến trình..."))
+            running_status = False
+            os._exit(0) # Thoát toàn bộ chương trình ngay lập tức
+        elif cmd == 'd':
+            try:
+                new_delay = float(input(rainbow_text("Nhập Delay mới (giây): ")))
+                current_delay = new_delay
+                print(rainbow_text(f"[OK] Đã cập nhật Delay thành: {current_delay}s"))
+            except ValueError:
+                print(rainbow_text("[Lỗi] Vui lòng nhập số hợp lệ!"))
+
 # --- Hàm xử lý Treo MQTT ---
-def start_treo_task(cookie: str, thread_id: str, message_content: str, delay: float, folder_name: str):
+def start_treo_task(cookie: str, thread_id: str, message_content: str, folder_name: str):
+    global running_status, current_delay
     try:
-        # Lọc chỉ lấy số từ thread_id
         clean_thread_id = re.sub(r'[^\d]', '', thread_id)
         if not clean_thread_id:
             return
         
-        # Khởi tạo sender từ module.treomqtt
         sender = FacebookMQTTSender(cookie, f"Task_{folder_name}")
         sender.connect()
         
         print(rainbow_text(f"[OK] Đã kết nối MQTT cho Cookie: {cookie[:15]}..."))
         
-        while True:
-            # Lấy thời gian hiện tại định dạng Giờ:Phút:Giây
+        while running_status:
             current_time = datetime.now().strftime("%H:%M:%S")
             try:
-                # Gửi tin nhắn thông qua hàm của module
                 sender.send_message(message_content, clean_thread_id)
-                
-                # Định dạng thông báo: THÀNH CÔNG | THỜI GIAN | ID BOX | DELAY
-                status_msg = f"THÀNH CÔNG | {current_time} | {clean_thread_id} | {delay}s"
-                print(rainbow_text(status_msg))
-                
-                time.sleep(delay)
-            except Exception as e:
-                # Định dạng thông báo khi THẤT BẠI
-                error_msg = f"THẤT BẠI | {current_time} | {clean_thread_id} | {delay}s"
-                print(rainbow_text(error_msg))
-                
-                time.sleep(delay)
-                continue
+                # 1|2|3|4 -> THÀNH CÔNG | THỜI GIAN | ID BOX | DELAY
+                print(rainbow_text(f"SUCCESS | {current_time} | {clean_thread_id} | {current_delay}s"))
+            except Exception:
+                print(rainbow_text(f"FAILED  | {current_time} | {clean_thread_id} | {current_delay}s"))
+            
+            # Nghỉ theo delay hiện tại (cho phép thay đổi delay ngay lập tức)
+            time.sleep(current_delay)
+            
     except Exception as e:
-        print(rainbow_text(f"[LỖI HỆ THỐNG] {str(e)}"))
+        print(rainbow_text(f"[LỖI] {str(e)}"))
 
-# --- Luồng chính điều khiển Input ---
 def main():
+    global current_delay
     print_banner()
 
     # 1. Nhập Đa Cookie
@@ -82,52 +95,48 @@ def main():
             break
         cookies.append(ck)
 
-    if not cookies:
-        print(rainbow_text("[!] Danh sách cookie trống. Thoát..."))
-        return
+    if not cookies: return
 
-    # 2. Nhập ID Box (thread_id)
-    thread_id = input(rainbow_text("\nNhập ID Box (thread_id): ")).strip()
+    # 2. Nhập ID Box
+    thread_id = input(rainbow_text("\nNhập ID Box: ")).strip()
 
-    # 3. Nhập File ngôn (message_content)
+    # 3. Nhập File nội dung
     message_content = ""
     while not message_content:
-        file_path = input(rainbow_text("\nNhập đường dẫn file nội dung (VD: ngon.txt): ")).strip()
+        file_path = input(rainbow_text("\nNhập đường dẫn file (VD: ngon.txt): ")).strip()
         try:
             with open(file_path, 'r', encoding='utf-8') as f:
                 message_content = f.read().strip()
-                print(rainbow_text(f"[OK] Đã tải nội dung từ file: {file_path}"))
         except FileNotFoundError:
-            print(rainbow_text("[X] Không tìm thấy file, vui lòng nhập lại!"))
+            print(rainbow_text("[X] Không thấy file!"))
 
-    # 4. Nhập Delay
+    # 4. Nhập Delay ban đầu
     try:
-        delay_input = input(rainbow_text("\nNhập delay (giây) [Mặc định 1.0]: ")).strip()
-        delay = float(delay_input) if delay_input else 1.0
+        current_delay = float(input(rainbow_text("\nNhập delay ban đầu (giây): ")) or 1.0)
     except ValueError:
-        delay = 1.0
+        current_delay = 1.0
+
+    # Khởi chạy luồng lắng nghe lệnh (Input Listener)
+    cmd_thread = threading.Thread(target=listen_for_commands)
+    cmd_thread.daemon = True
+    cmd_thread.start()
 
     print(rainbow_text("\n" + "="*50))
-    print(rainbow_text("🚀 BẮT ĐẦU TIẾN TRÌNH TREO MQTT..."))
+    print(rainbow_text("🚀 ĐANG CHẠY... GÕ 's' ĐỂ DỪNG, 'd' ĐỂ ĐỔI DELAY"))
     print(rainbow_text("="*50 + "\n"))
 
-    # Khởi chạy đa luồng cho từng cookie
-    threads = []
+    # Khởi chạy đa luồng cho cookie
     for i, cookie in enumerate(cookies):
         t = threading.Thread(
             target=start_treo_task, 
-            args=(cookie, thread_id, message_content, delay, f"User_{i}")
+            args=(cookie, thread_id, message_content, f"User_{i}")
         )
         t.daemon = True
         t.start()
-        threads.append(t)
 
-    # Giữ chương trình chạy
-    try:
-        while True:
-            time.sleep(1)
-    except KeyboardInterrupt:
-        print(rainbow_text("\n[!] Đang dừng chương trình..."))
+    # Giữ chương trình chạy chính
+    while running_status:
+        time.sleep(0.5)
 
 if __name__ == "__main__":
     main()
